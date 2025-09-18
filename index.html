@@ -1,72 +1,149 @@
-<!DOCTYPE html>
-<html lang="en">
+<!doctype html>
+<html lang="id">
 <head>
-    <meta charset="UTF-8">
-    <title>Rotating B Cube</title>
-    <style>
-        body { margin: 0; overflow: hidden; }
-        canvas { display: block; }
-    </style>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Konvolusi 3x3 (Mean Filter)</title>
+  <style>
+    body{font-family:system-ui,Segoe UI,Roboto,Arial;margin:20px;background:#f7f7fb;color:#111}
+    h1{font-size:20px;margin-bottom:6px}
+    .wrap{display:flex;gap:24px;align-items:flex-start}
+    table{border-collapse:collapse}
+    td{width:36px;height:36px;border:1px solid #bbb;text-align:center;vertical-align:middle}
+    input.cell{width:100%;height:100%;box-sizing:border-box;border:0;background:transparent;text-align:center;font-size:14px}
+    .grid-title{font-weight:600;margin-bottom:6px}
+    .controls{margin-top:12px}
+    button{padding:8px 12px;border-radius:6px;border:0;background:#2b6edf;color:#fff;cursor:pointer}
+    button:disabled{opacity:.5}
+    .small{font-size:13px;color:#444}
+    .output-td{background:#fff}
+    .calc{margin-top:12px;padding:10px;background:#fff;border-radius:8px;border:1px solid #e4e6ef}
+  </style>
 </head>
 <body>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.152.2/build/three.min.js"></script>
-    <script>
-        // Setup scene
-        const scene = new THREE.Scene();
-        const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
-        const renderer = new THREE.WebGLRenderer({antialias: true});
-        renderer.setSize(window.innerWidth, window.innerHeight);
-        document.body.appendChild(renderer.domElement);
+  <h1>Konvolusi 3x3 — Mean Filter (7×7 Input → 7×7 Output)</h1>
+  <div class="wrap">
+    <div>
+      <div class="grid-title">Input 7×7 (editable)</div>
+      <table id="input-grid"></table>
+      <div class="controls">
+        <button id="compute">Hitung Konvolusi</button>
+        <button id="random">Acak Angka</button>
+      </div>
+      <div class="small">Isi angka di sel (kosong = 0) atau klik "Acak Angka".</div>
+    </div>
 
-        // Create geometry and material
-        const geometry = new THREE.BoxGeometry(2, 2, 2);
+    <div>
+      <div class="grid-title">Output 7×7</div>
+      <table id="output-grid"></table>
+      <div class="calc" id="calc-box">Klik "Hitung Konvolusi" untuk melihat hasil perhitungan.</div>
+    </div>
+  </div>
 
-        // Create texture with "B"
-        const canvas = document.createElement('canvas');
-        canvas.width = 256;
-        canvas.height = 256;
-        const ctx = canvas.getContext('2d');
-        ctx.fillStyle = "#888";
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        ctx.font = "bold 150px Arial";
-        ctx.fillStyle = "orange";
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        ctx.fillText("B", canvas.width/2, canvas.height/2);
+  <script>
+    const rows = 7, cols = 7;
+    const inputGrid = document.getElementById('input-grid');
+    const outputGrid = document.getElementById('output-grid');
+    const calcBox = document.getElementById('calc-box');
 
-        const texture = new THREE.CanvasTexture(canvas);
+    function randomMatrix(){
+      return Array.from({length:rows},()=>Array.from({length:cols},()=>Math.floor(Math.random()*4)));
+    }
 
-        // Same texture for all 6 sides
-        const materials = [
-            new THREE.MeshBasicMaterial({map: texture}),
-            new THREE.MeshBasicMaterial({map: texture}),
-            new THREE.MeshBasicMaterial({map: texture}),
-            new THREE.MeshBasicMaterial({map: texture}),
-            new THREE.MeshBasicMaterial({map: texture}),
-            new THREE.MeshBasicMaterial({map: texture}),
-        ];
+    let defaultMatrix = randomMatrix();
 
-        const cube = new THREE.Mesh(geometry, materials);
-        scene.add(cube);
-
-        camera.position.z = 5;
-
-        // Animation loop
-        function animate() {
-            requestAnimationFrame(animate);
-            cube.rotation.x += 0.01;
-            cube.rotation.y += 0.01;
-            renderer.render(scene, camera);
+    function makeTable(tableEl, editable=true){
+      tableEl.innerHTML='';
+      for(let r=0;r<rows;r++){
+        const tr=document.createElement('tr');
+        for(let c=0;c<cols;c++){
+          const td=document.createElement('td');
+          td.className = editable ? 'input-td' : 'output-td';
+          if(editable){
+            const inp=document.createElement('input');
+            inp.className='cell';
+            inp.dataset.r=r; inp.dataset.c=c;
+            inp.value = defaultMatrix[r][c]===0 ? '' : defaultMatrix[r][c];
+            inp.addEventListener('input', ()=>{ inp.value = inp.value.replace(/[^0-9\-]/g,''); });
+            td.appendChild(inp);
+          }else{
+            td.textContent='';
+          }
+          tr.appendChild(td);
         }
+        tableEl.appendChild(tr);
+      }
+    }
 
-        animate();
+    function readInputMatrix(){
+      const mat = Array.from({length:rows},()=>Array(cols).fill(0));
+      inputGrid.querySelectorAll('input.cell').forEach(inp=>{
+        const r=+inp.dataset.r, c=+inp.dataset.c;
+        const v = parseInt(inp.value);
+        mat[r][c] = isNaN(v) ? 0 : v;
+      });
+      return mat;
+    }
 
-        // Handle window resize
-        window.addEventListener('resize', () => {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
+    function padZero(mat){
+      const P = Array.from({length:rows+2},()=>Array(cols+2).fill(0));
+      for(let r=0;r<rows;r++) for(let c=0;c<cols;c++) P[r+1][c+1]=mat[r][c];
+      return P;
+    }
+
+    function computeConvolution(mat){
+      const P = padZero(mat);
+      const out = Array.from({length:rows},()=>Array(cols).fill(0));
+      for(let r=0;r<rows;r++){
+        for(let c=0;c<cols;c++){
+          let s=0;
+          for(let u=-1;u<=1;u++) for(let v=-1;v<=1;v++){
+            s += P[r+1+u][c+1+v];
+          }
+          out[r][c] = s / 9;
+        }
+      }
+      return out;
+    }
+
+    function showOutput(out){
+      const tds = outputGrid.querySelectorAll('td');
+      out.forEach((row,r)=>{
+        row.forEach((val,c)=>{
+          const idx = r*cols + c;
+          tds[idx].textContent = Number.isInteger(val) ? val : (Math.round(val*100)/100);
         });
-    </script>
+      });
+    }
+
+    function showCalculationAt(r,c,mat){
+      const P = padZero(mat);
+      const centerR=r+1, centerC=c+1;
+      let s=0;
+      let terms=[];
+      for(let u=-1;u<=1;u++) for(let v=-1;v<=1;v++){
+        s += P[centerR+u][centerC+v];
+        terms.push(P[centerR+u][centerC+v]);
+      }
+      const avg=s/9;
+      calcBox.innerHTML=`<b>S(${r},${c})</b> = (1/9) * [${terms.join(' + ')}] = <b>${s}/9</b> = <b>${Math.round(avg*1000)/1000}</b>`;
+    }
+
+    document.getElementById('compute').addEventListener('click', ()=>{
+      const mat = readInputMatrix();
+      const out = computeConvolution(mat);
+      showOutput(out);
+      showCalculationAt(2,2,mat);
+    });
+
+    document.getElementById('random').addEventListener('click', ()=>{
+      defaultMatrix = randomMatrix();
+      makeTable(inputGrid,true);
+    });
+
+    makeTable(inputGrid,true);
+    makeTable(outputGrid,false);
+    document.getElementById('compute').click();
+  </script>
 </body>
 </html>
